@@ -8,7 +8,7 @@ interface SEOHeadProps {
   type?: string;
 }
 
-const BASE_URL = "https://talk2campus.lovable.app";
+const BASE_URL = "https://talk2campus.mits.ac.in";
 const DEFAULT_IMAGE = `${BASE_URL}/og-image.png`;
 const SITE_NAME = "Talk2Campus – MITS";
 

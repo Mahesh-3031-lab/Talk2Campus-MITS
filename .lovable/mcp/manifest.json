@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "sdk_version": "0.22.2",
+  "path": "/functions/v1/mcp",
+  "auth": {
+    "type": "oauth",
+    "issuer": "https://bsxognspctsarreiaort.supabase.co/auth/v1",
+    "accepted_audiences": [
+      "authenticated"
+    ]
+  },
+  "mcp": {
+    "server": {
+      "name": "talk2campus-mcp",
+      "version": "0.1.0",
+      "title": "Talk2Campus"
+    },
+    "tools": [
+      {
+        "name": "list_campus_buildings",
+        "title": "List campus buildings",
+        "description": "List MITS campus buildings, cafes, hostels, and facilities. Public campus directory data.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "type": {
+              "description": "Optional filter by building type; defaults to all.",
+              "type": "string",
+              "enum": [
+                "academic",
+                "admin",
+                "facility",
+                "amenity",
+                "hostel",
+                "sports",
+                "all"
+              ]
+            }
+          }
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "find_campus_place",
+        "title": "Find a campus place",
+        "description": "Look up a MITS campus place by name and get landmarks and a short description. Fuzzy match on the query.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Place name to search, e.g. 'canteen', 'library', 'KK block'."
+            }
+          },
+          "required": [
+            "query"
+          ]
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_canteen_vendors",
+        "title": "List canteen vendors",
+        "description": "List the food outlets on campus (Ekadant's Cafe, Lickies, Main Canteen, etc.) with their location tags.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_menu_items",
+        "title": "List menu items for a vendor",
+        "description": "List available menu items for a specific canteen vendor by vendor id.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "vendor_id": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Vendor UUID from list_canteen_vendors."
+            }
+          },
+          "required": [
+            "vendor_id"
+          ]
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}

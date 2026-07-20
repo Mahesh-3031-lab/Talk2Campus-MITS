@@ -26,6 +26,8 @@ import { useLanguagePreference } from "@/hooks/useLanguagePreference";
 import { useGraphMemory } from "@/hooks/useGraphMemory";
 import { useTimetable } from "@/hooks/useTimetable";
 import { useToast } from "@/hooks/use-toast";
+import { checkActionRateLimit } from "@/lib/security";
+
 import { getTopicConfig, TopicId } from "@/lib/topicContext";
 import { supabase } from "@/integrations/supabase/client";
 import { speakMultilingual, stopSpeaking, onSpeakingChange, isSpeaking as getIsSpeaking } from "@/lib/speakMultilingual";
@@ -168,11 +170,17 @@ const ChatInterface = () => {
   const handleAutoSend = useCallback(async (finalTranscript: string) => {
     if (!finalTranscript.trim() || isLoading) return;
 
+    if (!checkActionRateLimit('VOICE_START')) {
+      toast({ title: 'Slow down', description: 'Please wait before starting a new voice session.' });
+      return;
+    }
+
     const userMessage = finalTranscript.trim();
     setMessage("");
     resetTranscript();
     setChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setIsLoading(true);
+
 
     try {
       const response = await sendTextMessage(userMessage);
@@ -290,6 +298,11 @@ const ChatInterface = () => {
   const handleSendMessage = async () => {
     if (!message.trim() || isLoading) return;
 
+    if (!checkActionRateLimit('CHAT_MESSAGE')) {
+      toast({ title: 'Slow down', description: 'Too many messages. Wait a moment.' });
+      return;
+    }
+
     if (isSpeakingNow) {
       stopSpeaking();
     }
@@ -299,6 +312,7 @@ const ChatInterface = () => {
     resetTranscript();
     setChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setIsLoading(true);
+
 
     // Record search in graph memory
     recordSearch(userMessage);

@@ -34,16 +34,32 @@ export default function MenuView({ vendorId, vendorName, onBack, cartItems, onAd
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    (async () => {
+    let active = true;
+    const load = async () => {
       const { data } = await supabase
         .from('menu_items')
         .select('id, name, description, price, category, is_available, image_url')
         .eq('vendor_id', vendorId)
         .eq('is_available', true)
         .order('category');
-      if (data) setItems(data as MenuItem[]);
-      setLoading(false);
-    })();
+      if (active && data) setItems(data as MenuItem[]);
+      if (active) setLoading(false);
+    };
+    load();
+
+    const channel = supabase
+      .channel(`menu-items-student-${vendorId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'menu_items', filter: `vendor_id=eq.${vendorId}` },
+        () => load()
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
   }, [vendorId]);
 
   const filters: { label: string; value: FilterType; icon?: any }[] = [

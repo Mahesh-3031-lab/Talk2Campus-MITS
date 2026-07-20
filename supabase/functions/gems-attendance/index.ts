@@ -1,9 +1,22 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
+const ALLOWED_ORIGINS = [
+  'https://talk2campus.mits.ac.in',
+  'http://localhost:8080',
+  'http://localhost:5173',
+];
+
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin') ?? '';
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  };
+}
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -30,8 +43,13 @@ interface Session {
   isDemo: boolean;
 }
 
-const sessions = new Map<string, Session>();
 const SESSION_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+function getServiceClient() {
+  const url = Deno.env.get('SUPABASE_URL')!;
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  return createClient(url, key, { auth: { persistSession: false } });
+}
 
 function generateSessionToken(): string {
   const array = new Uint8Array(32);
@@ -39,12 +57,86 @@ function generateSessionToken(): string {
   return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function cleanupSessions() {
-  const now = Date.now();
-  for (const [token, session] of sessions.entries()) {
-    if (session.expiry < now) sessions.delete(token);
+async function saveSession(token: string, session: Session): Promise<void> {
+  try {
+    const db = getServiceClient();
+    await db.from('ims_sessions').upsert({
+      token,
+      roll_number: session.rollNumber,
+      cookies: session.cookies,
+      base_url: session.baseUrl,
+      is_demo: session.isDemo,
+      expires_at: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
+    });
+  } catch (err) {
+    console.error('[sessions] saveSession error:', err);
   }
 }
+
+async function getSession(token: string): Promise<Session | null> {
+  try {
+    const db = getServiceClient();
+    const { data } = await db
+      .from('ims_sessions')
+      .select('roll_number, cookies, base_url, is_demo, expires_at')
+      .eq('token', token)
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle();
+    if (!data) return null;
+    return {
+      rollNumber: data.roll_number as string,
+      cookies: data.cookies as string,
+      baseUrl: data.base_url as string,
+      isDemo: data.is_demo as boolean,
+      expiry: new Date(data.expires_at as string).getTime(),
+    };
+  } catch (err) {
+    console.error('[sessions] getSession error:', err);
+    return null;
+  }
+}
+
+async function deleteSession(token: string): Promise<void> {
+  try {
+    const db = getServiceClient();
+    await db.from('ims_sessions').delete().eq('token', token);
+  } catch (err) {
+    console.error('[sessions] deleteSession error:', err);
+  }
+}
+
+async function cleanupSessions(): Promise<void> {
+  try {
+    const db = getServiceClient();
+    await db.rpc('cleanup_ims_sessions');
+  } catch {
+    // Non-critical
+  }
+}
+
+/**
+ * DB-backed rate limit. Fails open (returns true) on any database error so a
+ * DB outage never locks out legitimate users.
+ */
+async function dbRateLimit(key: string, limit: number, windowMs: number): Promise<boolean> {
+  try {
+    const db = getServiceClient();
+    const { data, error } = await db.rpc('check_rate_limit', {
+      p_key: key,
+      p_limit: limit,
+      p_window_ms: windowMs,
+    });
+    if (error) {
+      console.error('[rate-limit] rpc error, failing open:', error);
+      return true;
+    }
+    return data !== false;
+  } catch (err) {
+    console.error('[rate-limit] exception, failing open:', err);
+    return true;
+  }
+}
+
 
 function extractCookies(response: Response): string {
   const cookies: string[] = [];
@@ -716,6 +808,7 @@ function validatePassword(pw: string): boolean {
 // ─── Main Handler ────────────────────────────────────────────────────────────
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -723,7 +816,9 @@ serve(async (req) => {
   try {
     const body = await req.json();
     const { action, rollNumber, password, sessionToken } = body;
-    cleanupSessions();
+    await cleanupSessions();
+    // Non-blocking cleanup of rate-limit table to prevent unbounded growth.
+    getServiceClient().rpc('cleanup_rate_limits').then(() => {}, () => {});
 
     if (action === 'login') {
       if (!rollNumber || !password) {
@@ -746,6 +841,20 @@ serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         );
       }
+
+      // Server-side rate limit: 5 login attempts per minute per roll number.
+      const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim()
+        || req.headers.get('cf-connecting-ip')
+        || 'unknown';
+      const rlKey = `gems-login:${String(rollNumber).toUpperCase()}:${clientIp}`;
+      const allowed = await dbRateLimit(rlKey, 5, 60_000);
+      if (!allowed) {
+        return new Response(
+          JSON.stringify({ error: 'Too many login attempts. Please wait a minute and try again.' }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
 
       let attendance: AttendanceResponse | null = null;
       let cookies = '';
@@ -774,7 +883,7 @@ serve(async (req) => {
       }
 
       const token = generateSessionToken();
-      sessions.set(token, { rollNumber, cookies, baseUrl, expiry: Date.now() + SESSION_TTL_MS, isDemo });
+      await saveSession(token, { rollNumber, cookies, baseUrl, expiry: Date.now() + SESSION_TTL_MS, isDemo });
 
       return new Response(
         JSON.stringify({ success: true, sessionToken: token, attendance, isDemo }),
@@ -790,9 +899,9 @@ serve(async (req) => {
         );
       }
 
-      const session = sessions.get(sessionToken);
+      const session = await getSession(sessionToken);
       if (!session || session.expiry < Date.now()) {
-        sessions.delete(sessionToken!);
+        await deleteSession(sessionToken!);
         return new Response(
           JSON.stringify({ error: 'Session expired. Please login again.' }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },

@@ -57,7 +57,18 @@ export default function MenuManagement({ vendorId }: MenuManagementProps) {
     setLoading(false);
   }, [vendorId]);
 
-  useEffect(() => { fetchItems(); }, [fetchItems]);
+  useEffect(() => {
+    fetchItems();
+    const channel = supabase
+      .channel(`menu-items-vendor-${vendorId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'menu_items', filter: `vendor_id=eq.${vendorId}` },
+        () => fetchItems()
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchItems, vendorId]);
 
   const resetForm = () => {
     setFormName(''); setFormDesc(''); setFormPrice(''); setFormCategory('meals');
@@ -98,18 +109,20 @@ export default function MenuManagement({ vendorId }: MenuManagementProps) {
   const handleSave = async () => {
     if (!formName.trim() || !formPrice) return;
     setSaving(true);
-    const payload = {
-      name: formName.trim(),
-      description: formDesc.trim() || null,
-      price: parseFloat(formPrice),
-      category: formCategory as any,
-      is_available: formAvailable,
-      image_url: formImageUrl || null,
-      vendor_id: vendorId,
+    const commonArgs = {
+      _name: formName.trim(),
+      _description: formDesc.trim() || null,
+      _price: parseFloat(formPrice),
+      _category: formCategory as any,
+      _is_available: formAvailable,
+      _image_url: formImageUrl || null,
     };
 
     if (editingItem) {
-      const { error } = await supabase.from('menu_items').update(payload).eq('id', editingItem.id);
+      const { error } = await supabase.rpc('update_menu_item_secure', {
+        _id: editingItem.id,
+        ...commonArgs,
+      });
       if (error) {
         toast({ title: 'Update failed', description: error.message, variant: 'destructive' });
       } else {
@@ -118,7 +131,10 @@ export default function MenuManagement({ vendorId }: MenuManagementProps) {
         fetchItems();
       }
     } else {
-      const { error } = await supabase.from('menu_items').insert(payload);
+      const { error } = await supabase.rpc('insert_menu_item_secure', {
+        _vendor_id: vendorId,
+        ...commonArgs,
+      });
       if (error) {
         toast({ title: 'Add failed', description: error.message, variant: 'destructive' });
       } else {
@@ -132,7 +148,7 @@ export default function MenuManagement({ vendorId }: MenuManagementProps) {
 
   const handleDelete = async (id: string) => {
     setDeletingId(id);
-    const { error } = await supabase.from('menu_items').delete().eq('id', id);
+    const { error } = await supabase.rpc('delete_menu_item_secure', { _id: id });
     if (error) {
       toast({ title: 'Delete failed', description: error.message, variant: 'destructive' });
     } else {

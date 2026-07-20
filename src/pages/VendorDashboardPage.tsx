@@ -18,6 +18,21 @@ const VendorDashboardPage = () => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
+        // RBAC: require 'vendor' role
+        const { data: roleRow } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .eq('role', 'vendor')
+          .maybeSingle();
+
+        if (!roleRow) {
+          await supabase.auth.signOut();
+          setError('This account does not have vendor access.');
+          setCheckingSession(false);
+          return;
+        }
+
         const { data: vendor } = await supabase
           .from('canteen_vendors')
           .select('id, name')
@@ -48,6 +63,19 @@ const VendorDashboardPage = () => {
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) { setError('Invalid credentials. Please try again.'); return; }
+
+      const { data: roleRow } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', data.user.id)
+        .eq('role', 'vendor')
+        .maybeSingle();
+
+      if (!roleRow) {
+        setError('This account does not have vendor access.');
+        await supabase.auth.signOut();
+        return;
+      }
 
       const { data: vendor } = await supabase
         .from('canteen_vendors')

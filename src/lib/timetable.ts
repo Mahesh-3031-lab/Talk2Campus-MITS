@@ -150,3 +150,46 @@ export function formatTime(time: string): string {
   const h12 = h % 12 || 12;
   return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
 }
+
+// ─── Cloud Sync (additive) ───────────────────────────────────────────────────
+import { supabase } from '@/integrations/supabase/client';
+
+export async function syncTimetableToCloud(rollNumber: string): Promise<void> {
+  if (!rollNumber?.trim()) return;
+  const local = loadTimetable();
+  try {
+    await supabase.from('student_timetables' as any).upsert({
+      roll_number: rollNumber.toUpperCase(),
+      entries: local.entries,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'roll_number' });
+  } catch (err) {
+    console.warn('[timetable] Cloud sync failed (non-critical):', err);
+  }
+}
+
+export async function loadTimetableFromCloud(rollNumber: string): Promise<void> {
+  if (!rollNumber?.trim()) return;
+  try {
+    const { data } = await supabase
+      .from('student_timetables' as any)
+      .select('entries, updated_at')
+      .eq('roll_number', rollNumber.toUpperCase())
+      .maybeSingle();
+
+    if (!data || !(data as any).entries) return;
+
+    const local = loadTimetable();
+    const cloudUpdatedAt = new Date((data as any).updated_at as string).getTime();
+
+    if (cloudUpdatedAt > local.lastUpdated) {
+      saveTimetable({
+        entries: (data as any).entries as TimetableEntry[],
+        lastUpdated: cloudUpdatedAt,
+      });
+    }
+  } catch (err) {
+    console.warn('[timetable] Cloud load failed (non-critical):', err);
+  }
+}
+

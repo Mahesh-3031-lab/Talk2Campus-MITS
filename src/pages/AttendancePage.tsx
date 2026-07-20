@@ -5,6 +5,7 @@ import AttendanceLogin from "@/components/attendance/AttendanceLogin";
 import AttendanceDisplay, { AttendanceData } from "@/components/attendance/AttendanceDisplay";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { checkRateLimit, sanitizeRollNumber } from "@/lib/security";
 
 type AttendanceView = "login" | "display";
 
@@ -19,6 +20,11 @@ const AttendancePage = () => {
   const [attendanceData, setAttendanceData] = useState<AttendanceData | null>(null);
 
   const handleLogin = useCallback(async (rollNumber: string, password: string) => {
+    if (!checkRateLimit('attendance_login', 5, 60_000)) {
+      setError('Too many login attempts. Please wait a minute before trying again.');
+      return;
+    }
+    const cleanRoll = sanitizeRollNumber(rollNumber);
     setIsLoading(true);
     setError(null);
 
@@ -26,7 +32,7 @@ const AttendancePage = () => {
       const { data, error: fnError } = await supabase.functions.invoke('gems-attendance', {
         body: { 
           action: 'login',
-          rollNumber,
+          rollNumber: cleanRoll,
           password,
         },
       });

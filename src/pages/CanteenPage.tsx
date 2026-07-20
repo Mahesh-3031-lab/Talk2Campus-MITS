@@ -1,9 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import SEOHead from "@/components/SEOHead";
+import { useUserRole } from '@/hooks/useUserRole';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useCanteenCart } from '@/hooks/useCanteenCart';
+import { checkRateLimit, sanitizeRollNumber, checkActionRateLimit } from '@/lib/security';
 import CanteenLogin from '@/components/canteen/CanteenLogin';
 import VendorList, { Vendor } from '@/components/canteen/VendorList';
 import MenuView from '@/components/canteen/MenuView';
@@ -16,6 +18,15 @@ const CanteenPage = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const cart = useCanteenCart();
+  const { isVendor, loading: roleLoading } = useUserRole();
+
+  // RBAC: vendors must use the vendor dashboard, not the student ordering screen
+  useEffect(() => {
+    if (!roleLoading && isVendor) {
+      toast({ title: 'Vendor account detected', description: 'Redirecting you to the vendor dashboard.' });
+      navigate('/canteen/vendor', { replace: true });
+    }
+  }, [roleLoading, isVendor, navigate, toast]);
 
   const [view, setView] = useState<View>('login');
   const [isLoading, setIsLoading] = useState(false);
@@ -27,17 +38,22 @@ const CanteenPage = () => {
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
 
   const handleLogin = useCallback(async (rollNumber: string, password: string) => {
+    if (!checkRateLimit('canteen_login', 5, 60_000)) {
+      setError('Too many login attempts. Please wait a minute before trying again.');
+      return;
+    }
+    const cleanRoll = sanitizeRollNumber(rollNumber);
     setIsLoading(true);
     setError(null);
     try {
       const { data, error: fnError } = await supabase.functions.invoke('gems-attendance', {
-        body: { action: 'login', rollNumber, password },
+        body: { action: 'login', rollNumber: cleanRoll, password },
       });
       if (fnError) throw new Error(fnError.message || 'Authentication failed');
       if (data.error) { setError(data.error); return; }
       if (data.success) {
-        setStudentRoll(rollNumber);
-        setStudentName(data.attendance?.studentName || rollNumber);
+        setStudentRoll(cleanRoll);
+        setStudentName(data.attendance?.studentName || cleanRoll);
         setView('vendors');
         toast({ title: 'Welcome! 🍽️', description: 'Browse canteens and order food' });
       } else {
@@ -57,7 +73,12 @@ const CanteenPage = () => {
 
   const handlePlaceOrder = useCallback(async () => {
     if (!selectedVendor || cart.items.length === 0) return;
+    if (!checkActionRateLimit('CANTEEN_ORDER')) {
+      toast({ title: 'Order limit', description: 'Please wait before placing another order.' });
+      return;
+    }
     setIsPlacingOrder(true);
+
     try {
       const { data: orderData, error: orderErr } = await supabase
         .from('canteen_orders')

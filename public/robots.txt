@@ -13,4 +13,4 @@ Allow: /
 User-agent: *
 Allow: /
 
-Sitemap: https://talk2campus.lovable.app/sitemap.xml
+Sitemap: https://talk2campus.mits.ac.in/sitemap.xml

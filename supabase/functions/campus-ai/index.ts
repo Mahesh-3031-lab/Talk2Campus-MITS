@@ -1,9 +1,42 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
+const ALLOWED_ORIGINS = [
+  'https://talk2campus.mits.ac.in',
+  'http://localhost:8080',
+  'http://localhost:5173',
+];
+
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin') ?? '';
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  };
+}
+
+// ─── IP Rate Limiting ─────────────────────────────────────────────────────────
+const ipRateMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_COUNT = 30;
+const RATE_WINDOW_MS = 60_000;
+
+function isRateLimited(req: Request): boolean {
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    req.headers.get('cf-connecting-ip') ??
+    'unknown';
+  const now = Date.now();
+  const entry = ipRateMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    ipRateMap.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
+    return false;
+  }
+  if (entry.count >= RATE_LIMIT_COUNT) return true;
+  entry.count++;
+  return false;
+}
 
 // Complete MITS Campus Data
 const campusData = {
@@ -254,9 +287,18 @@ const getDirections = (from: string, to: string): string => {
 };
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  if (isRateLimited(req)) {
+    return new Response(
+      JSON.stringify({ error: 'Too many requests. Please wait a moment and try again.' }),
+      { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '60' } },
+    );
+  }
+
 
   try {
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
@@ -264,8 +306,8 @@ serve(async (req) => {
       throw new Error('AI configuration missing');
     }
 
-    const { message, type, topicContext, memoryContext, userLanguage } = await req.json();
-    console.log(`Processing ${type} request:`, message, `language: ${userLanguage || 'auto'}`);
+    const { message, type, topicContext, memoryContext, userLanguage, mode } = await req.json();
+    console.log(`Processing ${type} request:`, message, `language: ${userLanguage || 'auto'}`, `mode: ${mode || 'student'}`);
 
     // --- RAG: Vector search for document-grounded context ---
     let documentContext = '';
@@ -375,6 +417,13 @@ ${ragInstruction}
 ${topicInstruction}
 ${memoryInstruction}
 
+${mode === 'parent' ? `PARENT MODE (CRITICAL):
+- You are speaking to a parent visiting campus, not a student. They may be older and non-technical.
+- Be extra warm, patient, and welcoming. Use short, simple sentences.
+- Avoid all jargon, acronyms, and student slang.
+- If the parent asks about a place, person, office, or building on campus, ALWAYS end your reply with a tag in this exact format on its own: [NAVIGATE:<place-name>] (e.g. [NAVIGATE:Admissions Office]). The tag is stripped before speaking — only used to open the map.
+- Do not include the tag for general questions (timings, contacts, events) that don't need navigation.
+` : ''}
 Campus context (use if relevant): ${JSON.stringify(campusContext)}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

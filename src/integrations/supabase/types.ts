@@ -139,6 +139,36 @@ export type Database = {
         }
         Relationships: []
       }
+      ims_sessions: {
+        Row: {
+          base_url: string
+          cookies: string
+          created_at: string
+          expires_at: string
+          is_demo: boolean
+          roll_number: string
+          token: string
+        }
+        Insert: {
+          base_url?: string
+          cookies: string
+          created_at?: string
+          expires_at?: string
+          is_demo?: boolean
+          roll_number: string
+          token: string
+        }
+        Update: {
+          base_url?: string
+          cookies?: string
+          created_at?: string
+          expires_at?: string
+          is_demo?: boolean
+          roll_number?: string
+          token?: string
+        }
+        Relationships: []
+      }
       menu_items: {
         Row: {
           category: Database["public"]["Enums"]["menu_category"]
@@ -282,6 +312,45 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limits: {
+        Row: {
+          count: number
+          id: number
+          key: string
+          window_start: string
+        }
+        Insert: {
+          count?: number
+          id?: number
+          key: string
+          window_start?: string
+        }
+        Update: {
+          count?: number
+          id?: number
+          key?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
+      student_timetables: {
+        Row: {
+          entries: Json
+          roll_number: string
+          updated_at: string
+        }
+        Insert: {
+          entries?: Json
+          roll_number: string
+          updated_at?: string
+        }
+        Update: {
+          entries?: Json
+          roll_number?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -308,13 +377,77 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _assert_vendor_owner: { Args: { _vendor_id: string }; Returns: undefined }
+      check_rate_limit: {
+        Args: { p_key: string; p_limit: number; p_window_ms: number }
+        Returns: boolean
+      }
       cleanup_expired_orders: { Args: never; Returns: undefined }
+      cleanup_ims_sessions: { Args: never; Returns: undefined }
+      cleanup_rate_limits: { Args: never; Returns: undefined }
+      delete_menu_item_secure: { Args: { _id: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      insert_menu_item_secure: {
+        Args: {
+          _category: Database["public"]["Enums"]["menu_category"]
+          _description: string
+          _image_url: string
+          _is_available: boolean
+          _name: string
+          _price: number
+          _vendor_id: string
+        }
+        Returns: {
+          category: Database["public"]["Enums"]["menu_category"]
+          created_at: string
+          description: string | null
+          id: string
+          image_url: string | null
+          is_available: boolean
+          name: string
+          price: number
+          vendor_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "menu_items"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_menu_item_secure: {
+        Args: {
+          _category: Database["public"]["Enums"]["menu_category"]
+          _description: string
+          _id: string
+          _image_url: string
+          _is_available: boolean
+          _name: string
+          _price: number
+        }
+        Returns: {
+          category: Database["public"]["Enums"]["menu_category"]
+          created_at: string
+          description: string | null
+          id: string
+          image_url: string | null
+          is_available: boolean
+          name: string
+          price: number
+          vendor_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "menu_items"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {

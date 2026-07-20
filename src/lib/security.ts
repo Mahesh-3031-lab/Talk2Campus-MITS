@@ -50,3 +50,29 @@ export function checkRateLimit(
 export function resetRateLimit(key: string): void {
   rlStore.delete(key);
 }
+
+// ─── Action-level Rate Limits (client-side UX guard) ──────────────────────────
+//
+// These do NOT replace server-side enforcement. They reduce accidental abuse
+// (double-clicks, runaway loops) and improve UX with clear toasts.
+
+export const RATE_KEYS = {
+  ATTENDANCE_LOGIN: 'rl:attendance:login',
+  CANTEEN_LOGIN:    'rl:canteen:login',
+  CHAT_MESSAGE:     'rl:chat:message',
+  VOICE_START:      'rl:voice:start',
+  CANTEEN_ORDER:    'rl:canteen:order',
+} as const;
+
+export function checkActionRateLimit(action: keyof typeof RATE_KEYS): boolean {
+  const limits: Record<keyof typeof RATE_KEYS, [number, number]> = {
+    ATTENDANCE_LOGIN: [5,  60_000],
+    CANTEEN_LOGIN:    [5,  60_000],
+    CHAT_MESSAGE:     [20, 60_000],
+    VOICE_START:      [10, 60_000],
+    CANTEEN_ORDER:    [5,  60_000],
+  };
+  const [limit, windowMs] = limits[action];
+  return checkRateLimit(RATE_KEYS[action], limit, windowMs);
+}
+
