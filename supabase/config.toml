@@ -1,0 +1,22 @@
+project_id = "bsxognspctsarreiaort"
+
+[functions.livekit-token]
+verify_jwt = false
+
+[functions.campus-ai]
+verify_jwt = false
+
+[functions.gems-attendance]
+verify_jwt = false
+
+[functions.mits-events]
+verify_jwt = false
+
+[functions.index-documents]
+verify_jwt = false
+
+[functions.vector-search]
+verify_jwt = false
+
+[functions.cloud-tts]
+verify_jwt = false
