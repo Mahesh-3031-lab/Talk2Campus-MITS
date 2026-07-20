@@ -48,10 +48,10 @@ serve(async (req) => {
     const categoryHint = category === 'drinks' ? 'beverage' : category === 'snacks' ? 'snack' : 'dish';
     const prompt = `A professional, appetizing food photography of "${itemName}" (Indian ${categoryHint}). Top-down view on a clean plate, warm lighting, high quality, restaurant style presentation. Clean white background.`;
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions",  {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
