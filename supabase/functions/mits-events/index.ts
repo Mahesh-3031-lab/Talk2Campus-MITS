@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const ALLOWED_ORIGINS = [
   'https://talk2campus.mits.ac.in',
+  'https://talk2campusmits.vercel.app',
   'http://localhost:8080',
   'http://localhost:5173',
 ];

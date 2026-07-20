@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const ALLOWED_ORIGINS = [
   'https://talk2campus.mits.ac.in',
+  'https://talk2campusmits.vercel.app',
   'http://localhost:8080',
   'http://localhost:5173',
 ];

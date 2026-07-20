@@ -5,6 +5,7 @@ const ALLOWED_ORIGINS = [
   'https://talk2campus.mits.ac.in',
   'http://localhost:8080',
   'http://localhost:5173',
+  'https://talk2campusmits.vercel.app'
 ];
 
 function getCorsHeaders(req: Request): Record<string, string> {
